@@ -1,5 +1,5 @@
-#[derive(Debug)]
-enum TokenKind {
+#[derive(Debug, Clone)]
+pub enum TokenKind {
     KwLet,
     Identifier,
     Number,
@@ -9,8 +9,8 @@ enum TokenKind {
     RightParen,
 }
 
-#[derive(Debug)]
-enum NumberLiteral {
+#[derive(Debug, Clone, Copy)]
+pub enum NumberLiteral {
     Int(i32),
     Float(f64),
 }
@@ -27,8 +27,8 @@ impl NumberLiteral {
     }
 }
 
-#[derive(Debug)]
-enum Literal {
+#[derive(Debug, Clone)]
+pub enum Literal {
     Nil,
     Number(NumberLiteral),
 }
@@ -39,11 +39,11 @@ impl From<NumberLiteral> for Literal {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token {
-    kind: TokenKind,
-    literal: Literal,
-    lexeme: String,
+    pub kind: TokenKind,
+    pub literal: Literal,
+    pub lexeme: String,
 }
 
 impl Token {
