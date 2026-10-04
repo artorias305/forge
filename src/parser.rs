@@ -47,20 +47,32 @@ impl Parser {
     }
 
     fn parse_expr(&mut self) -> Expr {
+        self.parse_binary_expr(0)
+    }
+
+    fn parse_binary_expr(&mut self, min_precedence: u8) -> Expr {
         let mut left = self.parse_primary();
 
-        while let Some(token) = self.peek() {
-            let operator = match token.kind {
-                TokenKind::Plus => BinaryOperator::Plus,
-                TokenKind::Minus => BinaryOperator::Minus,
-                TokenKind::Star => BinaryOperator::Star,
-                TokenKind::Slash => BinaryOperator::Slash,
+        loop {
+            let Some(token) = self.peek() else {
+                break;
+            };
+
+            let (operator, precedence) = match token.kind {
+                TokenKind::Plus => (BinaryOperator::Plus, 1),
+                TokenKind::Minus => (BinaryOperator::Minus, 1),
+                TokenKind::Star => (BinaryOperator::Star, 2),
+                TokenKind::Slash => (BinaryOperator::Slash, 2),
                 _ => break,
             };
 
+            if precedence < min_precedence {
+                break;
+            }
+
             self.advance();
 
-            let right = self.parse_primary();
+            let right = self.parse_binary_expr(precedence + 1);
 
             left = Expr::Binary {
                 left: Box::new(left),

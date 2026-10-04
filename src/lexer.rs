@@ -13,6 +13,8 @@ pub enum TokenKind {
     Minus,
     Star,
     Slash,
+
+    String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -37,11 +39,18 @@ impl NumberLiteral {
 pub enum Literal {
     Nil,
     Number(NumberLiteral),
+    String(String),
 }
 
 impl From<NumberLiteral> for Literal {
     fn from(value: NumberLiteral) -> Self {
         Literal::Number(value)
+    }
+}
+
+impl From<String> for Literal {
+    fn from(value: String) -> Self {
+        Literal::String(value)
     }
 }
 
@@ -164,6 +173,22 @@ impl Lexer {
                 }
                 '/' => {
                     tokens.push(Token::new(TokenKind::Slash, Literal::Nil, "/".to_string()));
+                }
+
+                '"' => {
+                    let mut buf = String::new();
+
+                    while let Some(r) = self.peek()
+                        && r != '"'
+                    {
+                        buf.push(self.advance().unwrap());
+                    }
+
+                    tokens.push(Token::new(
+                        TokenKind::String,
+                        Literal::String(buf.clone()),
+                        buf,
+                    ));
                 }
                 _ => {}
             }
