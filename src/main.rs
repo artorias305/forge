@@ -16,8 +16,9 @@ fn repl() -> std::io::Result<()> {
         }
 
         let input = input.trim();
+        let tokens = forge::lexer::Lexer::new(input).tokenize();
 
-        dbg!(input);
+        dbg!(tokens);
     }
 
     Ok(())
