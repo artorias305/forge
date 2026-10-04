@@ -111,11 +111,17 @@ impl Lexer {
                 '0'..='9' => {
                     // number literal
                     let mut buf = String::from(ch);
+                    let mut has_dot = false;
 
-                    while let Some(r) = self.peek()
-                        && (r.is_digit(10) || r == '.')
-                    {
-                        buf.push(self.advance().unwrap());
+                    while let Some(r) = self.peek() {
+                        if r.is_digit(10) {
+                            buf.push(self.advance().unwrap());
+                        } else if r == '.' && !has_dot {
+                            has_dot = true;
+                            buf.push(self.advance().unwrap());
+                        } else {
+                            break;
+                        }
                     }
 
                     tokens.push(Token::new(
