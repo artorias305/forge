@@ -2,6 +2,7 @@ use std::io::Write;
 
 fn repl() -> std::io::Result<()> {
     let mut input = String::new();
+    let mut interpreter = forge::interpreter::Interpreter::new();
 
     loop {
         print!("forge> ");
@@ -19,7 +20,7 @@ fn repl() -> std::io::Result<()> {
         let tokens = forge::lexer::Lexer::new(input).tokenize();
         let statements = forge::parser::Parser::new(tokens).parse();
 
-        dbg!(statements);
+        interpreter.execute(&statements);
     }
 
     Ok(())
