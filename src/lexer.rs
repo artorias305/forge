@@ -3,6 +3,10 @@ enum TokenKind {
     KwLet,
     Identifier,
     Number,
+    KwPrint,
+
+    LeftParen,
+    RightParen,
 }
 
 #[derive(Debug)]
@@ -81,11 +85,10 @@ impl Lexer {
         while let Some(ch) = self.advance() {
             match ch {
                 'a'..='z' => {
-                    // could be identifier or keyword
                     let mut buf = String::from(ch);
 
                     while let Some(r) = self.peek()
-                        && !r.is_whitespace()
+                        && (r.is_ascii_alphanumeric() || r == '_')
                     {
                         buf.push(self.advance().unwrap());
                     }
@@ -94,11 +97,17 @@ impl Lexer {
                         "let" => {
                             tokens.push(Token::new(TokenKind::KwLet, Literal::Nil, buf));
                         }
+
+                        "print" => {
+                            tokens.push(Token::new(TokenKind::KwPrint, Literal::Nil, buf));
+                        }
+
                         _ => {
                             tokens.push(Token::new(TokenKind::Identifier, Literal::Nil, buf));
                         }
                     }
                 }
+
                 '0'..='9' => {
                     // number literal
                     let mut buf = String::from(ch);
@@ -113,6 +122,20 @@ impl Lexer {
                         TokenKind::Number,
                         Literal::from(NumberLiteral::from(buf.as_str())),
                         buf,
+                    ));
+                }
+                '(' => {
+                    tokens.push(Token::new(
+                        TokenKind::LeftParen,
+                        Literal::Nil,
+                        "(".to_string(),
+                    ));
+                }
+                ')' => {
+                    tokens.push(Token::new(
+                        TokenKind::RightParen,
+                        Literal::Nil,
+                        ")".to_string(),
                     ));
                 }
                 _ => {}
