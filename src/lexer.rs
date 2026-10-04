@@ -1,7 +1,8 @@
 #[derive(Debug)]
 enum TokenKind {
-    KW_LET,
-    IDENTIFIER,
+    KwLet,
+    Identifier,
+    Number,
 }
 
 #[derive(Debug)]
@@ -10,10 +11,28 @@ enum NumberLiteral {
     Float(f64),
 }
 
+impl NumberLiteral {
+    fn from(s: &str) -> Self {
+        match s.contains('.') {
+            true => {
+                // yayy we are floating
+                Self::Float(s.parse::<f64>().unwrap())
+            }
+            false => Self::Int(s.parse::<i32>().unwrap()),
+        }
+    }
+}
+
 #[derive(Debug)]
 enum Literal {
     Nil,
     Number(NumberLiteral),
+}
+
+impl From<NumberLiteral> for Literal {
+    fn from(value: NumberLiteral) -> Self {
+        Literal::Number(value)
+    }
 }
 
 #[derive(Debug)]
@@ -73,12 +92,28 @@ impl Lexer {
 
                     match buf.to_lowercase().as_str() {
                         "let" => {
-                            tokens.push(Token::new(TokenKind::KW_LET, Literal::Nil, buf));
+                            tokens.push(Token::new(TokenKind::KwLet, Literal::Nil, buf));
                         }
                         _ => {
-                            tokens.push(Token::new(TokenKind::IDENTIFIER, Literal::Nil, buf));
+                            tokens.push(Token::new(TokenKind::Identifier, Literal::Nil, buf));
                         }
                     }
+                }
+                '0'..='9' => {
+                    // number literal
+                    let mut buf = String::from(ch);
+
+                    while let Some(r) = self.peek()
+                        && (r.is_digit(10) || r == '.')
+                    {
+                        buf.push(self.advance().unwrap());
+                    }
+
+                    tokens.push(Token::new(
+                        TokenKind::Number,
+                        Literal::from(NumberLiteral::from(buf.as_str())),
+                        buf,
+                    ));
                 }
                 _ => {}
             }
