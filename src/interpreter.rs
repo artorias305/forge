@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     lexer::NumberLiteral,
-    parser::{Expr, Stmt},
+    parser::{BinaryOperator, Expr, Stmt},
 };
 
 #[derive(Debug, Clone)]
@@ -60,6 +60,46 @@ impl Interpreter {
                 .get(name)
                 .cloned()
                 .expect("undefined variable"),
+            Expr::Binary {
+                left,
+                right,
+                operator,
+            } => {
+                let left = self.evaluate(left);
+                let right = self.evaluate(right);
+
+                self.evaluate_binary(left, operator, right)
+            }
+        }
+    }
+
+    fn evaluate_binary(&self, left: Value, operator: &BinaryOperator, right: Value) -> Value {
+        match (left, operator, right) {
+            (
+                Value::Number(NumberLiteral::Int(left)),
+                BinaryOperator::Plus,
+                Value::Number(NumberLiteral::Int(right)),
+            ) => Value::Number(NumberLiteral::Int(left + right)),
+
+            (
+                Value::Number(NumberLiteral::Int(left)),
+                BinaryOperator::Minus,
+                Value::Number(NumberLiteral::Int(right)),
+            ) => Value::Number(NumberLiteral::Int(left - right)),
+
+            (
+                Value::Number(NumberLiteral::Int(left)),
+                BinaryOperator::Star,
+                Value::Number(NumberLiteral::Int(right)),
+            ) => Value::Number(NumberLiteral::Int(left * right)),
+
+            (
+                Value::Number(NumberLiteral::Int(left)),
+                BinaryOperator::Slash,
+                Value::Number(NumberLiteral::Int(right)),
+            ) => Value::Number(NumberLiteral::Int(left / right)),
+
+            _ => panic!("unsupported binary operation"),
         }
     }
 }

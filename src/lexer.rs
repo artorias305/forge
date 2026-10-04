@@ -9,6 +9,10 @@ pub enum TokenKind {
     RightParen,
 
     Equals,
+    Plus,
+    Minus,
+    Star,
+    Slash,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -116,7 +120,7 @@ impl Lexer {
                     let mut has_dot = false;
 
                     while let Some(r) = self.peek() {
-                        if r.is_digit(10) {
+                        if r.is_ascii_digit() {
                             buf.push(self.advance().unwrap());
                         } else if r == '.' && !has_dot {
                             has_dot = true;
@@ -148,6 +152,18 @@ impl Lexer {
                 }
                 '=' => {
                     tokens.push(Token::new(TokenKind::Equals, Literal::Nil, "=".to_string()));
+                }
+                '+' => {
+                    tokens.push(Token::new(TokenKind::Plus, Literal::Nil, "+".to_string()));
+                }
+                '-' => {
+                    tokens.push(Token::new(TokenKind::Minus, Literal::Nil, "-".to_string()));
+                }
+                '*' => {
+                    tokens.push(Token::new(TokenKind::Star, Literal::Nil, "*".to_string()));
+                }
+                '/' => {
+                    tokens.push(Token::new(TokenKind::Slash, Literal::Nil, "/".to_string()));
                 }
                 _ => {}
             }

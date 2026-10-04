@@ -1,9 +1,23 @@
 use crate::lexer::{Literal, NumberLiteral, Token, TokenKind};
 
 #[derive(Debug)]
+pub enum BinaryOperator {
+    Plus,
+    Minus,
+    Star,
+    Slash,
+}
+
+#[derive(Debug)]
 pub enum Expr {
     Number(NumberLiteral),
     Identifier(String),
+
+    Binary {
+        left: Box<Expr>,
+        right: Box<Expr>,
+        operator: BinaryOperator,
+    },
 }
 
 #[derive(Debug)]
@@ -33,6 +47,32 @@ impl Parser {
     }
 
     fn parse_expr(&mut self) -> Expr {
+        let mut left = self.parse_primary();
+
+        while let Some(token) = self.peek() {
+            let operator = match token.kind {
+                TokenKind::Plus => BinaryOperator::Plus,
+                TokenKind::Minus => BinaryOperator::Minus,
+                TokenKind::Star => BinaryOperator::Star,
+                TokenKind::Slash => BinaryOperator::Slash,
+                _ => break,
+            };
+
+            self.advance();
+
+            let right = self.parse_primary();
+
+            left = Expr::Binary {
+                left: Box::new(left),
+                right: Box::new(right),
+                operator,
+            };
+        }
+
+        left
+    }
+
+    fn parse_primary(&mut self) -> Expr {
         let token = self.advance().expect("expected expression");
 
         match token.kind {
