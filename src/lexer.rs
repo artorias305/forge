@@ -7,6 +7,8 @@ pub enum TokenKind {
 
     LeftParen,
     RightParen,
+
+    Equals,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -143,6 +145,9 @@ impl Lexer {
                         Literal::Nil,
                         ")".to_string(),
                     ));
+                }
+                '=' => {
+                    tokens.push(Token::new(TokenKind::Equals, Literal::Nil, "=".to_string()));
                 }
                 _ => {}
             }

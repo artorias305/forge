@@ -1,12 +1,15 @@
 use crate::lexer::{Literal, NumberLiteral, Token, TokenKind};
 
-enum Expr {
+#[derive(Debug)]
+pub enum Expr {
     Number(NumberLiteral),
     Identifier(String),
 }
 
-enum Stmt {
+#[derive(Debug)]
+pub enum Stmt {
     Print(Expr),
+    Let { name: String, value: Expr },
 }
 
 pub struct Parser {
@@ -67,7 +70,37 @@ impl Parser {
 
                 Stmt::Print(expr)
             }
+            TokenKind::KwLet => {
+                let name_token = self.advance().expect("expected token");
+
+                if !matches!(name_token.kind, TokenKind::Identifier) {
+                    panic!("expected identifier");
+                }
+
+                let name = name_token.lexeme;
+
+                if !matches!(
+                    self.advance().expect("expected '='").kind,
+                    TokenKind::Equals
+                ) {
+                    panic!("expected '='");
+                }
+
+                let value = self.parse_expr();
+
+                Stmt::Let { name, value }
+            }
             _ => panic!("expected statement"),
         }
+    }
+
+    pub fn parse(&mut self) -> Vec<Stmt> {
+        let mut statements = Vec::new();
+
+        while self.peek().is_some() {
+            statements.push(self.parse_statement());
+        }
+
+        statements
     }
 }
