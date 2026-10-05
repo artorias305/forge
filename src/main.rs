@@ -44,14 +44,21 @@ fn repl() -> Result<(), Box<dyn std::error::Error>> {
             break;
         }
 
+        if input.len() == 1 {
+            continue;
+        }
+
         let parts: Vec<&str> = input.split_whitespace().collect();
 
-        if *parts.get(0).unwrap() == ".tokens" {
-            let tokens = Lexer::new(&parts[1..].join(" ")).tokenize()?;
-            dbg!(tokens);
-        } else {
-            if let Err(error) = run_source("<stdin>", input.trim(), &mut interpreter) {
-                eprintln!("{error}");
+        match *parts.get(0).unwrap() {
+            ".tokens" => {
+                let tokens = Lexer::new(&parts[1..].join(" ")).tokenize()?;
+                dbg!(tokens);
+            }
+            _ => {
+                if let Err(error) = run_source("<stdin>", input.trim(), &mut interpreter) {
+                    eprintln!("{error}");
+                }
             }
         }
     }
