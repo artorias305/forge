@@ -2,7 +2,7 @@ use std::io::Write;
 
 fn repl() -> std::io::Result<()> {
     let mut input = String::new();
-    let mut interpreter = forge::interpreter::Interpreter::new();
+    let mut interpreter = forge::interpreter::Interpreter::default();
 
     loop {
         print!("forge> ");

@@ -8,6 +8,30 @@ pub enum BinaryOperator {
     Slash,
 }
 
+impl From<TokenKind> for BinaryOperator {
+    fn from(value: TokenKind) -> Self {
+        match value {
+            TokenKind::Plus => BinaryOperator::Plus,
+            TokenKind::Minus => BinaryOperator::Minus,
+            TokenKind::Star => BinaryOperator::Star,
+            TokenKind::Slash => BinaryOperator::Slash,
+            _ => panic!("ababababbab"),
+        }
+    }
+}
+
+impl From<&TokenKind> for BinaryOperator {
+    fn from(value: &TokenKind) -> Self {
+        match value {
+            TokenKind::Plus => BinaryOperator::Plus,
+            TokenKind::Minus => BinaryOperator::Minus,
+            TokenKind::Star => BinaryOperator::Star,
+            TokenKind::Slash => BinaryOperator::Slash,
+            _ => panic!("ababababbab"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Expr {
     Number(NumberLiteral),
@@ -50,14 +74,24 @@ impl Parser {
         self.parse_binary_expr(0)
     }
 
+    // fn parse_unary_exp(&mut self) -> Expr {
+    //     let token = self.peek().expect("expected token");
+    //
+    //     let operator = BinaryOperator::from(&token.kind);
+    //
+    //     let right = self.parse_binary_expr(0);
+    //
+    //     Expr::Binary {
+    //         left: Box::new(Expr::Number(NumberLiteral::Int(0))),
+    //         right: Box::new(right),
+    //         operator
+    //     }
+    // }
+
     fn parse_binary_expr(&mut self, min_precedence: u8) -> Expr {
         let mut left = self.parse_primary();
 
-        loop {
-            let Some(token) = self.peek() else {
-                break;
-            };
-
+        while let Some(token) = self.peek() {
             let (operator, precedence) = match token.kind {
                 TokenKind::Plus => (BinaryOperator::Plus, 1),
                 TokenKind::Minus => (BinaryOperator::Minus, 1),

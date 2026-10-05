@@ -25,6 +25,12 @@ pub struct Interpreter {
     variables: HashMap<String, Value>,
 }
 
+impl Default for Interpreter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Interpreter {
     pub fn new() -> Self {
         Self {
