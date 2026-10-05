@@ -8,6 +8,16 @@ use crate::{
 #[derive(Debug, Clone)]
 enum Value {
     Number(NumberLiteral),
+    String(String),
+}
+
+impl Value {
+    fn type_name(&self) -> &'static str {
+        match self {
+            Value::Number(_) => "number",
+            Value::String(_) => "string",
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -15,6 +25,7 @@ impl fmt::Display for Value {
         match self {
             Value::Number(NumberLiteral::Int(n)) => write!(f, "{n}"),
             Value::Number(NumberLiteral::Float(n)) => write!(f, "{n}"),
+            Value::String(value) => write!(f, "{value}"),
         }
     }
 }
@@ -79,6 +90,7 @@ impl Interpreter {
     fn evaluate(&self, expr: &Expr, line: usize) -> Result<Value, RuntimeError> {
         match expr {
             Expr::Number(number) => Ok(Value::Number(*number)),
+            Expr::String(value) => Ok(Value::String(value.clone())),
             Expr::Identifier(name) => self
                 .variables
                 .get(name)
@@ -112,6 +124,10 @@ impl Interpreter {
     ) -> Result<Value, RuntimeError> {
         match (operator, value) {
             (UnaryOperator::Plus, value) => Ok(value),
+            (UnaryOperator::Minus, Value::String(_)) => Err(self.error(
+                line,
+                format!("cannot use '{}' with string", operator.symbol()),
+            )),
             (UnaryOperator::Minus, Value::Number(NumberLiteral::Int(value))) => value
                 .checked_neg()
                 .map(|value| Value::Number(NumberLiteral::Int(value)))
@@ -129,7 +145,35 @@ impl Interpreter {
         right: Value,
         line: usize,
     ) -> Result<Value, RuntimeError> {
-        let (Value::Number(left), Value::Number(right)) = (left, right);
+        let left_type = left.type_name();
+        let right_type = right.type_name();
+
+        if let (Value::String(left), Value::String(right), BinaryOperator::Plus) =
+            (&left, &right, operator)
+        {
+            return Ok(Value::String(format!("{left}{right}")));
+        }
+
+        if let (Value::Number(left), Value::Number(right)) = (&left, &right) {
+            return self.evaluate_numbers(*left, operator, *right, line);
+        }
+
+        Err(self.error(
+            line,
+            format!(
+                "cannot use '{}' with {left_type} and {right_type}",
+                operator.symbol()
+            ),
+        ))
+    }
+
+    fn evaluate_numbers(
+        &self,
+        left: NumberLiteral,
+        operator: &BinaryOperator,
+        right: NumberLiteral,
+        line: usize,
+    ) -> Result<Value, RuntimeError> {
         match (left, operator, right) {
             (NumberLiteral::Int(left), BinaryOperator::Plus, NumberLiteral::Int(right)) => left
                 .checked_add(right)
@@ -154,5 +198,112 @@ impl Interpreter {
             }
             _ => Err(self.error(line, "unsupported binary operation".to_string())),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{lexer::Lexer, parser::Parser as ForgeParser};
+
+    fn statements(source: &str) -> Vec<Stmt> {
+        let tokens = Lexer::new(source).tokenize().expect("source should lex");
+        ForgeParser::new(tokens)
+            .parse()
+            .expect("source should parse")
+    }
+
+    fn eval(source: &str) -> Result<Value, RuntimeError> {
+        let parsed = statements(source);
+        let interpreter = Interpreter::new();
+
+        match parsed.into_iter().next().expect("expected one statement") {
+            Stmt::Let { value, line, .. } => interpreter.evaluate(&value, line),
+            other => panic!("expected a let statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn evaluates_string_literal() {
+        assert_eq!(
+            eval("let s = \"hi\"").expect("should evaluate").to_string(),
+            "hi"
+        );
+    }
+
+    #[test]
+    fn evaluates_empty_string() {
+        assert_eq!(
+            eval("let s = \"\"").expect("should evaluate").to_string(),
+            ""
+        );
+    }
+
+    #[test]
+    fn concatenates_two_strings() {
+        let value = eval("let s = \"a\" + \"b\"").expect("should evaluate");
+        assert_eq!(value.to_string(), "ab");
+    }
+
+    #[test]
+    fn concatenates_escaped_string() {
+        let value = eval(r#"let s = "a\"b" + "c""#).expect("should evaluate");
+        assert_eq!(value.to_string(), "a\"bc");
+    }
+
+    #[test]
+    fn concatenates_more_than_two_strings() {
+        let value = eval(r#"let s = "a" + "b" + "c""#).expect("should evaluate");
+        assert_eq!(value.to_string(), "abc");
+    }
+
+    #[test]
+    fn resolves_string_from_variable() {
+        let mut interpreter = Interpreter::new();
+
+        for statement in &statements("let s = \"hi\"") {
+            interpreter
+                .execute_statement(statement)
+                .expect("should execute");
+        }
+
+        assert_eq!(
+            interpreter
+                .variables
+                .get("s")
+                .expect("variable should exist")
+                .to_string(),
+            "hi"
+        );
+    }
+
+    #[test]
+    fn rejects_string_and_number_operands() {
+        let error = eval("let s = \"a\" + 1").expect_err("mixed operands should fail");
+        assert_eq!(error.message, "cannot use '+' with string and number");
+    }
+
+    #[test]
+    fn rejects_string_subtraction() {
+        let error = eval("let s = \"a\" - \"b\"").expect_err("only + concatenates");
+        assert_eq!(error.message, "cannot use '-' with string and string");
+    }
+
+    #[test]
+    fn rejects_unary_minus_on_string() {
+        let error = eval("let s = -\"a\"").expect_err("cannot negate a string");
+        assert_eq!(error.message, "cannot use '-' with string");
+    }
+
+    #[test]
+    fn keeps_number_arithmetic_working() {
+        let value = eval("let s = 10 + 5").expect("should evaluate");
+        assert_eq!(value.to_string(), "15");
+    }
+
+    #[test]
+    fn keeps_unary_minus_on_number_working() {
+        let value = eval("let s = -10").expect("should evaluate");
+        assert_eq!(value.to_string(), "-10");
     }
 }

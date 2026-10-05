@@ -21,6 +21,15 @@ impl BinaryOperator {
         }
     }
 
+    pub fn symbol(&self) -> &'static str {
+        match self {
+            Self::Plus => "+",
+            Self::Minus => "-",
+            Self::Star => "*",
+            Self::Slash => "/",
+        }
+    }
+
     fn precedence(&self) -> u8 {
         match self {
             Self::Plus | Self::Minus => 1,
@@ -43,11 +52,19 @@ impl UnaryOperator {
             _ => None,
         }
     }
+
+    pub fn symbol(&self) -> &'static str {
+        match self {
+            Self::Plus => "+",
+            Self::Minus => "-",
+        }
+    }
 }
 
 #[derive(Debug)]
 pub enum Expr {
     Number(NumberLiteral),
+    String(String),
     Identifier(String),
     Binary {
         left: Box<Expr>,
@@ -180,6 +197,13 @@ impl Parser {
                     message: "invalid number literal".to_string(),
                 }),
             },
+            TokenKind::String => match token.literal {
+                Literal::String(value) => Ok(Expr::String(value)),
+                _ => Err(ParseError {
+                    line: token.line,
+                    message: "invalid string literal".to_string(),
+                }),
+            },
             TokenKind::Identifier => Ok(Expr::Identifier(token.lexeme)),
             TokenKind::LeftParen => {
                 let expr = self.parse_expr()?;
@@ -262,5 +286,106 @@ impl Parser {
             statements.push(self.parse_statement()?);
         }
         Ok(statements)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::Lexer;
+
+    fn parse(source: &str) -> Result<Vec<Stmt>, ParseError> {
+        let tokens = Lexer::new(source).tokenize().expect("source should lex");
+        Parser::new(tokens).parse()
+    }
+
+    #[test]
+    fn parses_string_print_statement() {
+        let statements = parse("print(\"hi\")").expect("source should parse");
+
+        match &statements[0] {
+            Stmt::Print {
+                expr: Expr::String(value),
+                ..
+            } => assert_eq!(value, "hi"),
+            other => panic!("expected print of a string, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_string_let_statement() {
+        let statements = parse("let greeting = \"hello\"").expect("source should parse");
+
+        match &statements[0] {
+            Stmt::Let {
+                name,
+                value: Expr::String(value),
+                ..
+            } => {
+                assert_eq!(name, "greeting");
+                assert_eq!(value, "hello");
+            }
+            other => panic!("expected a string let, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_string_concatenation() {
+        let statements = parse("let s = \"a\" + \"b\"").expect("source should parse");
+
+        match &statements[0] {
+            Stmt::Let {
+                value:
+                    Expr::Binary {
+                        left,
+                        right,
+                        operator: BinaryOperator::Plus,
+                    },
+                ..
+            } => {
+                assert!(matches!(**left, Expr::String(ref value) if value == "a"));
+                assert!(matches!(**right, Expr::String(ref value) if value == "b"));
+            }
+            other => panic!("expected string concatenation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn respects_precedence_in_string_concatenation() {
+        let statements = parse("let s = \"a\" + \"b\" + \"c\"").expect("source should parse");
+
+        match &statements[0] {
+            Stmt::Let {
+                value:
+                    Expr::Binary {
+                        left,
+                        operator: BinaryOperator::Plus,
+                        right,
+                    },
+                ..
+            } => {
+                assert!(matches!(**right, Expr::String(ref value) if value == "c"));
+                assert!(matches!(
+                    **left,
+                    Expr::Binary {
+                        operator: BinaryOperator::Plus,
+                        ..
+                    }
+                ));
+            }
+            other => panic!("expected left associative concatenation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_string_as_binding_name() {
+        let error = parse("let \"name\" = 1").expect_err("a string is not an identifier");
+        assert_eq!(error.message, "expected identifier");
+    }
+
+    #[test]
+    fn rejects_missing_operand_after_string() {
+        let error = parse("let s = \"a\" +").expect_err("missing right operand");
+        assert_eq!(error.message, "expected expression");
     }
 }

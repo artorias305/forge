@@ -1,0 +1,7 @@
+let greeting = "hello"
+let name = "forge"
+let message = greeting + ", " + name + "!"
+print(message)
+print("escapes: \"quoted\"\ttabbed\nnewline")
+print("empty: [" + "" + "]")
+print(greeting + " " + name)

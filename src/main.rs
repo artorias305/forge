@@ -50,7 +50,7 @@ fn repl() -> Result<(), Box<dyn std::error::Error>> {
 
         let parts: Vec<&str> = input.split_whitespace().collect();
 
-        match *parts.get(0).unwrap() {
+        match *parts.first().unwrap() {
             ".tokens" => {
                 let tokens = Lexer::new(&parts[1..].join(" ")).tokenize()?;
                 dbg!(tokens);
