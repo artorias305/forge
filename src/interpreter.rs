@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     lexer::NumberLiteral,
-    parser::{BinaryOperator, Expr, Stmt},
+    parser::{BinaryOperator, Expr, Stmt, UnaryOperator},
 };
 
 #[derive(Debug, Clone)]
@@ -76,6 +76,24 @@ impl Interpreter {
 
                 self.evaluate_binary(left, operator, right)
             }
+            Expr::Unary { operator, operand } => {
+                let value = self.evaluate(operand);
+
+                self.evaluate_unary(operator, value)
+            }
+        }
+    }
+
+    fn evaluate_unary(&self, operator: &UnaryOperator, value: Value) -> Value {
+        match (operator, value) {
+            (UnaryOperator::Plus, value) => value,
+            (UnaryOperator::Minus, Value::Number(NumberLiteral::Int(value))) => {
+                Value::Number(NumberLiteral::Int(-value))
+            }
+            (UnaryOperator::Minus, Value::Number(NumberLiteral::Float(value))) => {
+                Value::Number(NumberLiteral::Float(-value))
+            }
+            _ => panic!("unsupported unary operation"),
         }
     }
 

@@ -8,26 +8,37 @@ pub enum BinaryOperator {
     Slash,
 }
 
-impl From<TokenKind> for BinaryOperator {
-    fn from(value: TokenKind) -> Self {
-        match value {
-            TokenKind::Plus => BinaryOperator::Plus,
-            TokenKind::Minus => BinaryOperator::Minus,
-            TokenKind::Star => BinaryOperator::Star,
-            TokenKind::Slash => BinaryOperator::Slash,
-            _ => panic!("ababababbab"),
+impl BinaryOperator {
+    fn from(kind: &TokenKind) -> Option<Self> {
+        match kind {
+            TokenKind::Plus => Some(Self::Plus),
+            TokenKind::Minus => Some(Self::Minus),
+            TokenKind::Star => Some(Self::Star),
+            TokenKind::Slash => Some(Self::Slash),
+            _ => None,
+        }
+    }
+
+    fn precedence(&self) -> u8 {
+        match self {
+            Self::Plus | Self::Minus => 1,
+            Self::Star | Self::Slash => 2,
         }
     }
 }
 
-impl From<&TokenKind> for BinaryOperator {
-    fn from(value: &TokenKind) -> Self {
-        match value {
-            TokenKind::Plus => BinaryOperator::Plus,
-            TokenKind::Minus => BinaryOperator::Minus,
-            TokenKind::Star => BinaryOperator::Star,
-            TokenKind::Slash => BinaryOperator::Slash,
-            _ => panic!("ababababbab"),
+#[derive(Debug)]
+pub enum UnaryOperator {
+    Plus,
+    Minus,
+}
+
+impl UnaryOperator {
+    fn from(kind: &TokenKind) -> Option<Self> {
+        match kind {
+            TokenKind::Plus => Some(Self::Plus),
+            TokenKind::Minus => Some(Self::Minus),
+            _ => None,
         }
     }
 }
@@ -41,6 +52,11 @@ pub enum Expr {
         left: Box<Expr>,
         right: Box<Expr>,
         operator: BinaryOperator,
+    },
+
+    Unary {
+        operator: UnaryOperator,
+        operand: Box<Expr>,
     },
 }
 
@@ -74,39 +90,39 @@ impl Parser {
         self.parse_binary_expr(0)
     }
 
-    // fn parse_unary_exp(&mut self) -> Expr {
-    //     let token = self.peek().expect("expected token");
-    //
-    //     let operator = BinaryOperator::from(&token.kind);
-    //
-    //     let right = self.parse_binary_expr(0);
-    //
-    //     Expr::Binary {
-    //         left: Box::new(Expr::Number(NumberLiteral::Int(0))),
-    //         right: Box::new(right),
-    //         operator
-    //     }
-    // }
+    fn parse_unary(&mut self) -> Expr {
+        let operator = self
+            .peek()
+            .and_then(|token| UnaryOperator::from(&token.kind));
+
+        match operator {
+            Some(operator) => {
+                self.advance();
+
+                Expr::Unary {
+                    operator,
+                    operand: Box::new(self.parse_unary()),
+                }
+            }
+            None => self.parse_primary(),
+        }
+    }
 
     fn parse_binary_expr(&mut self, min_precedence: u8) -> Expr {
-        let mut left = self.parse_primary();
+        let mut left = self.parse_unary();
 
         while let Some(token) = self.peek() {
-            let (operator, precedence) = match token.kind {
-                TokenKind::Plus => (BinaryOperator::Plus, 1),
-                TokenKind::Minus => (BinaryOperator::Minus, 1),
-                TokenKind::Star => (BinaryOperator::Star, 2),
-                TokenKind::Slash => (BinaryOperator::Slash, 2),
-                _ => break,
+            let Some(operator) = BinaryOperator::from(&token.kind) else {
+                break;
             };
 
-            if precedence < min_precedence {
+            if operator.precedence() < min_precedence {
                 break;
             }
 
             self.advance();
 
-            let right = self.parse_binary_expr(precedence + 1);
+            let right = self.parse_binary_expr(operator.precedence() + 1);
 
             left = Expr::Binary {
                 left: Box::new(left),
@@ -128,6 +144,19 @@ impl Parser {
             },
 
             TokenKind::Identifier => Expr::Identifier(token.lexeme),
+
+            TokenKind::LeftParen => {
+                let expr = self.parse_expr();
+
+                if !matches!(
+                    self.advance().expect("expected token").kind,
+                    TokenKind::RightParen
+                ) {
+                    panic!("expected ')'");
+                }
+
+                expr
+            }
 
             _ => panic!("expected expression"),
         }
