@@ -122,6 +122,44 @@ impl Lexer {
         Some(c)
     }
 
+    fn read_escape(&mut self, line: usize) -> Result<char, LexerError> {
+        let escaped = self
+            .advance()
+            .ok_or_else(|| LexerError::new(line, "unterminated string".to_string()))?;
+
+        match escaped {
+            '"' => Ok('"'),
+            '\\' => Ok('\\'),
+            'n' => Ok('\n'),
+            'r' => Ok('\r'),
+            't' => Ok('\t'),
+            '\n' => Err(LexerError::new(
+                line,
+                "unexpected line break in string".to_string(),
+            )),
+            _ => Err(LexerError::new(
+                line,
+                format!("invalid escape sequence '\\{escaped}'"),
+            )),
+        }
+    }
+
+    fn read_string(&mut self, line: usize) -> Result<String, LexerError> {
+        let mut buf = String::new();
+
+        loop {
+            let Some(ch) = self.advance() else {
+                return Err(LexerError::new(line, "unterminated string".to_string()));
+            };
+
+            match ch {
+                '"' => return Ok(buf),
+                '\\' => buf.push(self.read_escape(line)?),
+                _ => buf.push(ch),
+            }
+        }
+    }
+
     pub fn tokenize(&mut self) -> Result<Vec<Token>, LexerError> {
         let mut tokens = vec![];
 
@@ -211,24 +249,11 @@ impl Lexer {
                     line,
                 )),
                 '"' => {
-                    let mut buf = String::new();
-                    let mut terminated = false;
-
-                    while let Some(next) = self.advance() {
-                        if next == '"' {
-                            terminated = true;
-                            break;
-                        }
-                        buf.push(next);
-                    }
-
-                    if !terminated {
-                        return Err(LexerError::new(line, "unterminated string".to_string()));
-                    }
+                    let value = self.read_string(line)?;
                     tokens.push(Token::new(
                         TokenKind::String,
-                        Literal::String(buf.clone()),
-                        buf,
+                        Literal::String(value.clone()),
+                        value,
                         line,
                     ));
                 }
@@ -251,5 +276,87 @@ impl Lexer {
         }
 
         Ok(tokens)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tokenize(source: &str) -> Result<Vec<Token>, LexerError> {
+        Lexer::new(source).tokenize()
+    }
+
+    fn string_value(source: &str) -> String {
+        let tokens = tokenize(source).expect("source should lex");
+
+        match tokens.into_iter().next().expect("expected one token") {
+            Token {
+                kind: TokenKind::String,
+                literal: Literal::String(value),
+                ..
+            } => value,
+            other => panic!("expected a string token, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn lexes_plain_string() {
+        assert_eq!(string_value("\"hello\""), "hello");
+    }
+
+    #[test]
+    fn lexes_empty_string() {
+        assert_eq!(string_value("\"\""), "");
+    }
+
+    #[test]
+    fn lexes_escapes() {
+        assert_eq!(string_value(r#""a\"b\\c\nd\te""#), "a\"b\\c\nd\te");
+    }
+
+    #[test]
+    fn rejects_invalid_escape() {
+        let error = tokenize(r#""a\qb""#).expect_err("invalid escape should fail");
+        assert!(
+            error.message.contains("invalid escape sequence"),
+            "{}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn rejects_line_break_after_escape() {
+        let error = tokenize("\"a\\\nb\"").expect_err("escaped newline should fail");
+        assert_eq!(error.message, "unexpected line break in string");
+    }
+
+    #[test]
+    fn rejects_unterminated_string() {
+        let error = tokenize("\"abc").expect_err("unterminated string should fail");
+        assert_eq!(error.message, "unterminated string");
+    }
+
+    #[test]
+    fn rejects_unterminated_escape() {
+        let error = tokenize("\"abc\\").expect_err("unterminated escape should fail");
+        assert_eq!(error.message, "unterminated string");
+    }
+
+    #[test]
+    fn tracks_lines_after_multiline_string() {
+        let tokens = tokenize("\"a\nb\"\nprint(1)").expect("source should lex");
+        let string = &tokens[0];
+        let print = &tokens[1];
+
+        assert_eq!(string.line, 1);
+        assert!(matches!(print.kind, TokenKind::KwPrint));
+        assert_eq!(print.line, 3);
+    }
+
+    #[test]
+    fn ignores_comment_after_string() {
+        let tokens = tokenize("\"a\" # trailing").expect("source should lex");
+        assert_eq!(tokens.len(), 1);
     }
 }
