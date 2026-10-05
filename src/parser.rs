@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::lexer::{Literal, NumberLiteral, Token, TokenKind};
 
 #[derive(Debug)]
@@ -47,13 +49,11 @@ impl UnaryOperator {
 pub enum Expr {
     Number(NumberLiteral),
     Identifier(String),
-
     Binary {
         left: Box<Expr>,
         right: Box<Expr>,
         operator: BinaryOperator,
     },
-
     Unary {
         operator: UnaryOperator,
         operand: Box<Expr>,
@@ -62,35 +62,73 @@ pub enum Expr {
 
 #[derive(Debug)]
 pub enum Stmt {
-    Print(Expr),
-    Let { name: String, value: Expr },
+    Print {
+        expr: Expr,
+        line: usize,
+    },
+    Let {
+        name: String,
+        value: Expr,
+        line: usize,
+    },
 }
+
+#[derive(Debug, Clone)]
+pub struct ParseError {
+    pub line: usize,
+    pub message: String,
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "line {}: {}", self.line, self.message)
+    }
+}
+
+impl std::error::Error for ParseError {}
 
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    last_line: usize,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, pos: 0 }
+        Self {
+            tokens,
+            pos: 0,
+            last_line: 1,
+        }
     }
 
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.pos)
     }
 
+    fn line(&self) -> usize {
+        self.peek().map_or(self.last_line, |token| token.line)
+    }
+
     fn advance(&mut self) -> Option<Token> {
         let token = self.tokens.get(self.pos)?.clone();
         self.pos += 1;
+        self.last_line = token.line;
         Some(token)
     }
 
-    fn parse_expr(&mut self) -> Expr {
+    fn error(&self, message: impl Into<String>) -> ParseError {
+        ParseError {
+            line: self.line(),
+            message: message.into(),
+        }
+    }
+
+    fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         self.parse_binary_expr(0)
     }
 
-    fn parse_unary(&mut self) -> Expr {
+    fn parse_unary(&mut self) -> Result<Expr, ParseError> {
         let operator = self
             .peek()
             .and_then(|token| UnaryOperator::from(&token.kind));
@@ -98,32 +136,27 @@ impl Parser {
         match operator {
             Some(operator) => {
                 self.advance();
-
-                Expr::Unary {
+                Ok(Expr::Unary {
                     operator,
-                    operand: Box::new(self.parse_unary()),
-                }
+                    operand: Box::new(self.parse_unary()?),
+                })
             }
             None => self.parse_primary(),
         }
     }
 
-    fn parse_binary_expr(&mut self, min_precedence: u8) -> Expr {
-        let mut left = self.parse_unary();
+    fn parse_binary_expr(&mut self, min_precedence: u8) -> Result<Expr, ParseError> {
+        let mut left = self.parse_unary()?;
 
         while let Some(token) = self.peek() {
             let Some(operator) = BinaryOperator::from(&token.kind) else {
                 break;
             };
-
             if operator.precedence() < min_precedence {
                 break;
             }
-
             self.advance();
-
-            let right = self.parse_binary_expr(operator.precedence() + 1);
-
+            let right = self.parse_binary_expr(operator.precedence() + 1)?;
             left = Expr::Binary {
                 left: Box::new(left),
                 right: Box::new(right),
@@ -131,91 +164,103 @@ impl Parser {
             };
         }
 
-        left
+        Ok(left)
     }
 
-    fn parse_primary(&mut self) -> Expr {
-        let token = self.advance().expect("expected expression");
+    fn parse_primary(&mut self) -> Result<Expr, ParseError> {
+        let token = self
+            .advance()
+            .ok_or_else(|| self.error("expected expression"))?;
 
         match token.kind {
             TokenKind::Number => match token.literal {
-                Literal::Number(number) => Expr::Number(number),
-                _ => unreachable!(),
+                Literal::Number(number) => Ok(Expr::Number(number)),
+                _ => Err(ParseError {
+                    line: token.line,
+                    message: "invalid number literal".to_string(),
+                }),
             },
-
-            TokenKind::Identifier => Expr::Identifier(token.lexeme),
-
+            TokenKind::Identifier => Ok(Expr::Identifier(token.lexeme)),
             TokenKind::LeftParen => {
-                let expr = self.parse_expr();
-
-                if !matches!(
-                    self.advance().expect("expected token").kind,
-                    TokenKind::RightParen
-                ) {
-                    panic!("expected ')'");
+                let expr = self.parse_expr()?;
+                let closing = self.advance().ok_or_else(|| self.error("expected ')'"))?;
+                if !matches!(closing.kind, TokenKind::RightParen) {
+                    return Err(ParseError {
+                        line: closing.line,
+                        message: "expected ')'".to_string(),
+                    });
                 }
-
-                expr
+                Ok(expr)
             }
-
-            _ => panic!("expected expression"),
+            _ => Err(ParseError {
+                line: token.line,
+                message: "expected expression".to_string(),
+            }),
         }
     }
 
-    fn parse_statement(&mut self) -> Stmt {
-        let token = self.advance().expect("expected statement");
+    fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
+        let token = self
+            .advance()
+            .ok_or_else(|| self.error("expected statement"))?;
 
         match token.kind {
             TokenKind::KwPrint => {
-                if !matches!(
-                    self.advance().expect("expected token").kind,
-                    TokenKind::LeftParen,
-                ) {
-                    panic!("expected '('");
+                let opening = self.advance().ok_or_else(|| self.error("expected '('"))?;
+                if !matches!(opening.kind, TokenKind::LeftParen) {
+                    return Err(ParseError {
+                        line: opening.line,
+                        message: "expected '('".to_string(),
+                    });
                 }
-
-                let expr = self.parse_expr();
-
-                if !matches!(
-                    self.advance().expect("expected token").kind,
-                    TokenKind::RightParen
-                ) {
-                    panic!("expected ')'");
+                let expr = self.parse_expr()?;
+                let closing = self.advance().ok_or_else(|| self.error("expected ')'"))?;
+                if !matches!(closing.kind, TokenKind::RightParen) {
+                    return Err(ParseError {
+                        line: closing.line,
+                        message: "expected ')'".to_string(),
+                    });
                 }
-
-                Stmt::Print(expr)
+                Ok(Stmt::Print {
+                    expr,
+                    line: token.line,
+                })
             }
             TokenKind::KwLet => {
-                let name_token = self.advance().expect("expected token");
-
+                let name_token = self
+                    .advance()
+                    .ok_or_else(|| self.error("expected identifier"))?;
                 if !matches!(name_token.kind, TokenKind::Identifier) {
-                    panic!("expected identifier");
+                    return Err(ParseError {
+                        line: name_token.line,
+                        message: "expected identifier".to_string(),
+                    });
                 }
-
-                let name = name_token.lexeme;
-
-                if !matches!(
-                    self.advance().expect("expected '='").kind,
-                    TokenKind::Equals
-                ) {
-                    panic!("expected '='");
+                let equals = self.advance().ok_or_else(|| self.error("expected '='"))?;
+                if !matches!(equals.kind, TokenKind::Equals) {
+                    return Err(ParseError {
+                        line: equals.line,
+                        message: "expected '='".to_string(),
+                    });
                 }
-
-                let value = self.parse_expr();
-
-                Stmt::Let { name, value }
+                Ok(Stmt::Let {
+                    name: name_token.lexeme,
+                    value: self.parse_expr()?,
+                    line: token.line,
+                })
             }
-            _ => panic!("expected statement"),
+            _ => Err(ParseError {
+                line: token.line,
+                message: "expected statement".to_string(),
+            }),
         }
     }
 
-    pub fn parse(&mut self) -> Vec<Stmt> {
+    pub fn parse(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut statements = Vec::new();
-
         while self.peek().is_some() {
-            statements.push(self.parse_statement());
+            statements.push(self.parse_statement()?);
         }
-
-        statements
+        Ok(statements)
     }
 }
