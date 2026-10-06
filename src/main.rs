@@ -3,6 +3,8 @@ use std::{fs, io::Write};
 use clap::Parser;
 use forge::{interpreter::Interpreter, lexer::Lexer, parser::Parser as ForgeParser};
 
+const BUILTINS: [&str; 2] = [".help", ".tokens"];
+
 #[derive(Debug, clap::Parser)]
 #[command(
     name = "forge",
@@ -35,6 +37,7 @@ fn repl() -> Result<(), Box<dyn std::error::Error>> {
     let mut input = String::new();
     let mut interpreter = Interpreter::default();
 
+    println!(".help for help");
     loop {
         print!("forge> ");
         std::io::stdout().flush()?;
@@ -51,6 +54,13 @@ fn repl() -> Result<(), Box<dyn std::error::Error>> {
         let parts: Vec<&str> = input.split_whitespace().collect();
 
         match *parts.first().unwrap() {
+            ".help" => {
+                println!("Builtin commands:");
+                for b in BUILTINS {
+                    print!("{} ", b);
+                }
+                println!();
+            }
             ".tokens" => {
                 let tokens = Lexer::new(&parts[1..].join(" ")).tokenize()?;
                 dbg!(tokens);
