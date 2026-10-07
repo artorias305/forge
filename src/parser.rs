@@ -8,6 +8,12 @@ pub enum BinaryOperator {
     Minus,
     Star,
     Slash,
+    Eq,
+    NotEq,
+    Greater,
+    GreaterEq,
+    Less,
+    LessEq,
 }
 
 impl BinaryOperator {
@@ -17,6 +23,12 @@ impl BinaryOperator {
             TokenKind::Minus => Some(Self::Minus),
             TokenKind::Star => Some(Self::Star),
             TokenKind::Slash => Some(Self::Slash),
+            TokenKind::OpEqEq => Some(Self::Eq),
+            TokenKind::OpNEq => Some(Self::NotEq),
+            TokenKind::OpGt => Some(Self::Greater),
+            TokenKind::OpGtEq => Some(Self::GreaterEq),
+            TokenKind::OpLt => Some(Self::Less),
+            TokenKind::OpLtEq => Some(Self::LessEq),
             _ => None,
         }
     }
@@ -27,13 +39,21 @@ impl BinaryOperator {
             Self::Minus => "-",
             Self::Star => "*",
             Self::Slash => "/",
+            Self::Eq => "==",
+            Self::NotEq => "!=",
+            Self::Greater => ">",
+            Self::GreaterEq => ">=",
+            Self::Less => "<",
+            Self::LessEq => "<=",
         }
     }
 
     fn precedence(&self) -> u8 {
         match self {
-            Self::Plus | Self::Minus => 1,
-            Self::Star | Self::Slash => 2,
+            Self::Eq | Self::NotEq => 1,
+            Self::Greater | Self::GreaterEq | Self::Less | Self::LessEq => 2,
+            Self::Plus | Self::Minus => 3,
+            Self::Star | Self::Slash => 4,
         }
     }
 }
@@ -42,6 +62,7 @@ impl BinaryOperator {
 pub enum UnaryOperator {
     Plus,
     Minus,
+    Not,
 }
 
 impl UnaryOperator {
@@ -49,6 +70,7 @@ impl UnaryOperator {
         match kind {
             TokenKind::Plus => Some(Self::Plus),
             TokenKind::Minus => Some(Self::Minus),
+            TokenKind::OpNot => Some(Self::Not),
             _ => None,
         }
     }
@@ -57,6 +79,7 @@ impl UnaryOperator {
         match self {
             Self::Plus => "+",
             Self::Minus => "-",
+            Self::Not => "!",
         }
     }
 }
@@ -66,6 +89,7 @@ pub enum Expr {
     Number(NumberLiteral),
     String(String),
     Identifier(String),
+    Boolean(bool),
     Binary {
         left: Box<Expr>,
         right: Box<Expr>,
@@ -216,6 +240,8 @@ impl Parser {
                 }
                 Ok(expr)
             }
+            TokenKind::KwTrue => Ok(Expr::Boolean(true)),
+            TokenKind::KwFalse => Ok(Expr::Boolean(false)),
             _ => Err(ParseError {
                 line: token.line,
                 message: "expected expression".to_string(),

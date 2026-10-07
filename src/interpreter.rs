@@ -9,6 +9,7 @@ use crate::{
 enum Value {
     Number(NumberLiteral),
     String(String),
+    Boolean(bool),
 }
 
 impl Value {
@@ -16,6 +17,7 @@ impl Value {
         match self {
             Value::Number(_) => "number",
             Value::String(_) => "string",
+            Value::Boolean(_) => "boolean",
         }
     }
 }
@@ -26,6 +28,7 @@ impl fmt::Display for Value {
             Value::Number(NumberLiteral::Int(n)) => write!(f, "{n}"),
             Value::Number(NumberLiteral::Float(n)) => write!(f, "{n}"),
             Value::String(value) => write!(f, "{value}"),
+            Value::Boolean(bool) => write!(f, "{bool}"),
         }
     }
 }
@@ -96,6 +99,7 @@ impl Interpreter {
                 .get(name)
                 .cloned()
                 .ok_or_else(|| self.error(line, format!("undefined variable '{name}'"))),
+            Expr::Boolean(b) => Ok(Value::Boolean(*b)),
             Expr::Binary {
                 left,
                 right,
@@ -122,19 +126,26 @@ impl Interpreter {
         value: Value,
         line: usize,
     ) -> Result<Value, RuntimeError> {
+        let value_type = value.type_name();
+
         match (operator, value) {
-            (UnaryOperator::Plus, value) => Ok(value),
-            (UnaryOperator::Minus, Value::String(_)) => Err(self.error(
-                line,
-                format!("cannot use '{}' with string", operator.symbol()),
-            )),
+            (UnaryOperator::Plus, Value::Number(value)) => Ok(Value::Number(value)),
+
             (UnaryOperator::Minus, Value::Number(NumberLiteral::Int(value))) => value
                 .checked_neg()
                 .map(|value| Value::Number(NumberLiteral::Int(value)))
                 .ok_or_else(|| self.error(line, "integer overflow".to_string())),
+
             (UnaryOperator::Minus, Value::Number(NumberLiteral::Float(value))) => {
                 Ok(Value::Number(NumberLiteral::Float(-value)))
             }
+
+            (UnaryOperator::Not, Value::Boolean(value)) => Ok(Value::Boolean(!value)),
+
+            _ => Err(self.error(
+                line,
+                format!("cannot use '{}' with {value_type}", operator.symbol()),
+            )),
         }
     }
 
@@ -148,14 +159,32 @@ impl Interpreter {
         let left_type = left.type_name();
         let right_type = right.type_name();
 
-        if let (Value::String(left), Value::String(right), BinaryOperator::Plus) =
-            (&left, &right, operator)
-        {
-            return Ok(Value::String(format!("{left}{right}")));
-        }
+        match (&left, &right, operator) {
+            (Value::String(left), Value::String(right), BinaryOperator::Plus) => {
+                return Ok(Value::String(format!("{left}{right}")));
+            }
 
-        if let (Value::Number(left), Value::Number(right)) = (&left, &right) {
-            return self.evaluate_numbers(*left, operator, *right, line);
+            (Value::String(left), Value::String(right), BinaryOperator::Eq) => {
+                return Ok(Value::Boolean(left == right));
+            }
+
+            (Value::String(left), Value::String(right), BinaryOperator::NotEq) => {
+                return Ok(Value::Boolean(left != right));
+            }
+
+            (Value::Boolean(left), Value::Boolean(right), BinaryOperator::Eq) => {
+                return Ok(Value::Boolean(left == right));
+            }
+
+            (Value::Boolean(left), Value::Boolean(right), BinaryOperator::NotEq) => {
+                return Ok(Value::Boolean(left != right));
+            }
+
+            (Value::Number(left), Value::Number(right), operator) => {
+                return self.evaluate_numbers(*left, operator, *right, line);
+            }
+
+            _ => {}
         }
 
         Err(self.error(
@@ -174,6 +203,30 @@ impl Interpreter {
         right: NumberLiteral,
         line: usize,
     ) -> Result<Value, RuntimeError> {
+        let left_value = match left {
+            NumberLiteral::Int(value) => value as f64,
+            NumberLiteral::Float(value) => value,
+        };
+
+        let right_value = match right {
+            NumberLiteral::Int(value) => value as f64,
+            NumberLiteral::Float(value) => value,
+        };
+
+        let comparison = match operator {
+            BinaryOperator::Eq => Some(left_value == right_value),
+            BinaryOperator::NotEq => Some(left_value != right_value),
+            BinaryOperator::Greater => Some(left_value > right_value),
+            BinaryOperator::GreaterEq => Some(left_value >= right_value),
+            BinaryOperator::Less => Some(left_value < right_value),
+            BinaryOperator::LessEq => Some(left_value <= right_value),
+            _ => None,
+        };
+
+        if let Some(result) = comparison {
+            return Ok(Value::Boolean(result));
+        }
+
         match (left, operator, right) {
             (NumberLiteral::Int(left), BinaryOperator::Plus, NumberLiteral::Int(right)) => left
                 .checked_add(right)
@@ -305,5 +358,95 @@ mod tests {
     fn keeps_unary_minus_on_number_working() {
         let value = eval("let s = -10").expect("should evaluate");
         assert_eq!(value.to_string(), "-10");
+    }
+
+    #[test]
+    fn evaluates_numeric_comparisons() {
+        let cases = [
+            ("let x = 1 == 1", "true"),
+            ("let x = 1 != 2", "true"),
+            ("let x = 1 < 2", "true"),
+            ("let x = 2 <= 2", "true"),
+            ("let x = 3 > 2", "true"),
+            ("let x = 3 >= 3", "true"),
+            ("let x = 2 > 3", "false"),
+        ];
+
+        for (source, expected) in cases {
+            assert_eq!(
+                eval(source)
+                    .expect("comparison should evaluate")
+                    .to_string(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn compares_integer_and_float_numbers() {
+        assert_eq!(
+            eval("let x = 1 == 1.0")
+                .expect("comparison should evaluate")
+                .to_string(),
+            "true"
+        );
+    }
+
+    #[test]
+    fn evaluates_boolean_comparisons() {
+        assert_eq!(
+            eval("let x = true == true")
+                .expect("comparison should evaluate")
+                .to_string(),
+            "true"
+        );
+
+        assert_eq!(
+            eval("let x = true != false")
+                .expect("comparison should evaluate")
+                .to_string(),
+            "true"
+        );
+    }
+
+    #[test]
+    fn evaluates_boolean_negation() {
+        assert_eq!(
+            eval("let x = !false")
+                .expect("negation should evaluate")
+                .to_string(),
+            "true"
+        );
+
+        assert_eq!(
+            eval("let x = !!true")
+                .expect("negation should evaluate")
+                .to_string(),
+            "true"
+        );
+    }
+
+    #[test]
+    fn compares_strings_for_equality() {
+        assert_eq!(
+            eval(r#"let x = "forge" == "forge""#)
+                .expect("comparison should evaluate")
+                .to_string(),
+            "true"
+        );
+    }
+
+    #[test]
+    fn rejects_ordering_strings() {
+        let error = eval(r#"let x = "a" < "b""#).expect_err("string ordering should fail");
+
+        assert_eq!(error.message, "cannot use '<' with string and string");
+    }
+
+    #[test]
+    fn rejects_mixed_type_comparisons() {
+        let error = eval("let x = true == 1").expect_err("mixed comparison should fail");
+
+        assert_eq!(error.message, "cannot use '==' with boolean and number");
     }
 }

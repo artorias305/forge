@@ -14,6 +14,17 @@ pub enum TokenKind {
     Star,
     Slash,
     String,
+
+    OpEqEq,
+    OpGt,
+    OpGtEq,
+    OpLt,
+    OpLtEq,
+    OpNEq,
+    OpNot,
+
+    KwTrue,
+    KwFalse,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -41,6 +52,7 @@ pub enum Literal {
     Nil,
     Number(NumberLiteral),
     String(String),
+    Boolean(bool),
 }
 
 impl From<NumberLiteral> for Literal {
@@ -113,6 +125,15 @@ impl Lexer {
         self.source.get(self.pos).copied()
     }
 
+    fn match_char(&mut self, expected: char) -> bool {
+        if self.peek() == Some(expected) {
+            self.advance();
+            true
+        } else {
+            false
+        }
+    }
+
     fn advance(&mut self) -> Option<char> {
         let c = self.peek()?;
         self.pos += 1;
@@ -175,12 +196,15 @@ impl Lexer {
                         buf.push(self.advance().expect("peeked character must exist"));
                     }
 
-                    let kind = match buf.to_lowercase().as_str() {
-                        "let" => TokenKind::KwLet,
-                        "print" => TokenKind::KwPrint,
-                        _ => TokenKind::Identifier,
+                    let (kind, literal) = match buf.to_lowercase().as_str() {
+                        "let" => (TokenKind::KwLet, Literal::Nil),
+                        "print" => (TokenKind::KwPrint, Literal::Nil),
+                        "true" => (TokenKind::KwTrue, Literal::Boolean(true)),
+                        "false" => (TokenKind::KwFalse, Literal::Boolean(false)),
+                        _ => (TokenKind::Identifier, Literal::Nil),
                     };
-                    tokens.push(Token::new(kind, Literal::Nil, buf, line));
+
+                    tokens.push(Token::new(kind, literal, buf, line));
                 }
                 '0'..='9' => {
                     let mut buf = String::from(ch);
@@ -218,12 +242,74 @@ impl Lexer {
                     ")".to_string(),
                     line,
                 )),
-                '=' => tokens.push(Token::new(
-                    TokenKind::Equals,
-                    Literal::Nil,
-                    "=".to_string(),
-                    line,
-                )),
+                '=' => {
+                    if self.match_char('=') {
+                        tokens.push(Token::new(
+                            TokenKind::OpEqEq,
+                            Literal::Nil,
+                            "==".to_string(),
+                            line,
+                        ));
+                    } else {
+                        tokens.push(Token::new(
+                            TokenKind::Equals,
+                            Literal::Nil,
+                            "=".to_string(),
+                            line,
+                        ));
+                    }
+                }
+                '>' => {
+                    if self.match_char('=') {
+                        tokens.push(Token::new(
+                            TokenKind::OpGtEq,
+                            Literal::Nil,
+                            ">=".to_string(),
+                            line,
+                        ));
+                    } else {
+                        tokens.push(Token::new(
+                            TokenKind::OpGt,
+                            Literal::Nil,
+                            ">".to_string(),
+                            line,
+                        ));
+                    }
+                }
+                '<' => {
+                    if self.match_char('=') {
+                        tokens.push(Token::new(
+                            TokenKind::OpLtEq,
+                            Literal::Nil,
+                            "<=".to_string(),
+                            line,
+                        ));
+                    } else {
+                        tokens.push(Token::new(
+                            TokenKind::OpLt,
+                            Literal::Nil,
+                            "<".to_string(),
+                            line,
+                        ));
+                    }
+                }
+                '!' => {
+                    if self.match_char('=') {
+                        tokens.push(Token::new(
+                            TokenKind::OpNEq,
+                            Literal::Nil,
+                            "!=".to_string(),
+                            line,
+                        ));
+                    } else {
+                        tokens.push(Token::new(
+                            TokenKind::OpNot,
+                            Literal::Nil,
+                            "!".to_string(),
+                            line,
+                        ));
+                    }
+                }
                 '+' => tokens.push(Token::new(
                     TokenKind::Plus,
                     Literal::Nil,
@@ -358,5 +444,16 @@ mod tests {
     fn ignores_comment_after_string() {
         let tokens = tokenize("\"a\" # trailing").expect("source should lex");
         assert_eq!(tokens.len(), 1);
+    }
+
+    #[test]
+    fn preserves_rhs_after_single_character_operators() {
+        let tokens = tokenize("1<2 !true").expect("source should lex");
+
+        assert!(matches!(tokens[0].kind, TokenKind::Number));
+        assert!(matches!(tokens[1].kind, TokenKind::OpLt));
+        assert!(matches!(tokens[2].kind, TokenKind::Number));
+        assert!(matches!(tokens[3].kind, TokenKind::OpNot));
+        assert!(matches!(tokens[4].kind, TokenKind::KwTrue));
     }
 }
