@@ -51,6 +51,13 @@ impl NumberLiteral {
                 .map_err(|_| LexerError::new(0, format!("invalid number '{s}'")))
         }
     }
+
+    pub fn to_f64(&self) -> f64 {
+        match self {
+            NumberLiteral::Int(value) => *value as f64,
+            NumberLiteral::Float(value) => *value,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

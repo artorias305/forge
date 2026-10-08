@@ -85,10 +85,14 @@ print(7 - 3 * 2)
 print("forge" + "!")
 ```
 
-Arithmetic is integer-only. Floating-point literals are supported for
-comparisons (`print(1 == 1.0)` prints `true`) but using them in arithmetic is a
-runtime error. Integer division truncates toward zero, and division by zero or
-integer overflow are runtime errors.
+Arithmetic works on integers and floats. Integer-only operations are checked:
+integer division truncates toward zero, and division by zero or integer
+overflow are runtime errors. Mixing an integer and a float promotes the
+integer, so `1 + 2.5` is `3.5` and `1 / 2.0` is `0.5` (while `1 / 2` is
+still `0`). Floating-point division follows IEEE 754: `1.0 / 0.0` is `inf`,
+`-1.0 / 0.0` is `-inf`, and `0.0 / 0.0` is `NaN`. Floats print with a
+decimal point, so `print(1.0 + 2.0)` writes `3.0`, while `1 == 1.0` still
+compares `true`.
 
 String literals support the escapes `\" \\ \n \r \t`:
 

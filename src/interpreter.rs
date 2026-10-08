@@ -26,7 +26,7 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Number(NumberLiteral::Int(n)) => write!(f, "{n}"),
-            Value::Number(NumberLiteral::Float(n)) => write!(f, "{n}"),
+            Value::Number(NumberLiteral::Float(n)) => write!(f, "{n:?}"),
             Value::String(value) => write!(f, "{value}"),
             Value::Boolean(bool) => write!(f, "{bool}"),
         }
@@ -229,15 +229,8 @@ impl Interpreter {
         right: NumberLiteral,
         line: usize,
     ) -> Result<Value, RuntimeError> {
-        let left_value = match left {
-            NumberLiteral::Int(value) => value as f64,
-            NumberLiteral::Float(value) => value,
-        };
-
-        let right_value = match right {
-            NumberLiteral::Int(value) => value as f64,
-            NumberLiteral::Float(value) => value,
-        };
+        let left_value = left.to_f64();
+        let right_value = right.to_f64();
 
         let comparison = match operator {
             BinaryOperator::Eq => Some(left_value == right_value),
@@ -274,6 +267,25 @@ impl Interpreter {
                         .map(|value| Value::Number(NumberLiteral::Int(value)))
                         .ok_or_else(|| self.error(line, "integer overflow".to_string()))
                 }
+            }
+            (left, operator, right)
+                if matches!(
+                    operator,
+                    BinaryOperator::Plus
+                        | BinaryOperator::Minus
+                        | BinaryOperator::Star
+                        | BinaryOperator::Slash
+                ) =>
+            {
+                let (left, right) = (left.to_f64(), right.to_f64());
+                let value = match operator {
+                    BinaryOperator::Plus => left + right,
+                    BinaryOperator::Minus => left - right,
+                    BinaryOperator::Star => left * right,
+                    BinaryOperator::Slash => left / right,
+                    _ => unreachable!("guarded above"),
+                };
+                Ok(Value::Number(NumberLiteral::Float(value)))
             }
             _ => Err(self.error(line, "unsupported binary operation".to_string())),
         }
@@ -474,5 +486,91 @@ mod tests {
         let error = eval("let x = true == 1").expect_err("mixed comparison should fail");
 
         assert_eq!(error.message, "cannot use '==' with boolean and number");
+    }
+
+    #[test]
+    fn promotes_mixed_int_and_float_arithmetic() {
+        assert_eq!(
+            eval("let x = 1 + 2.5")
+                .expect("should evaluate")
+                .to_string(),
+            "3.5"
+        );
+        assert_eq!(
+            eval("let x = 2.5 + 1")
+                .expect("should evaluate")
+                .to_string(),
+            "3.5"
+        );
+    }
+
+    #[test]
+    fn float_arithmetic_keeps_decimal_display() {
+        assert_eq!(
+            eval("let x = 1.0 + 2.0")
+                .expect("should evaluate")
+                .to_string(),
+            "3.0"
+        );
+        assert_eq!(
+            eval("let x = 1.5 * 2")
+                .expect("should evaluate")
+                .to_string(),
+            "3.0"
+        );
+    }
+
+    #[test]
+    fn float_division_is_not_truncated() {
+        assert_eq!(
+            eval("let x = 1.0 / 2")
+                .expect("should evaluate")
+                .to_string(),
+            "0.5"
+        );
+        assert_eq!(
+            eval("let x = 1 / 2.0")
+                .expect("should evaluate")
+                .to_string(),
+            "0.5"
+        );
+        assert_eq!(
+            eval("let x = 1 / 2").expect("should evaluate").to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn float_division_by_zero_follows_ieee754() {
+        assert_eq!(
+            eval("let x = 1.0 / 0.0")
+                .expect("should evaluate")
+                .to_string(),
+            "inf"
+        );
+        assert_eq!(
+            eval("let x = -1.0 / 0.0")
+                .expect("should evaluate")
+                .to_string(),
+            "-inf"
+        );
+        assert_eq!(
+            eval("let x = 0.0 / 0.0")
+                .expect("should evaluate")
+                .to_string(),
+            "NaN"
+        );
+    }
+
+    #[test]
+    fn integer_division_by_zero_still_errors() {
+        let error = eval("let x = 1 / 0").expect_err("division by zero should fail");
+        assert_eq!(error.message, "division by zero");
+    }
+
+    #[test]
+    fn integer_overflow_still_errors() {
+        let error = eval("let x = 2000000000 * 2000000000").expect_err("overflow should fail");
+        assert_eq!(error.message, "integer overflow");
     }
 }
