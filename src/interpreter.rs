@@ -83,6 +83,32 @@ impl Interpreter {
                 let result = self.evaluate(expr, *line).map(|value| println!("{value}"));
                 (*line, result)
             }
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+                line,
+            } => {
+                let value = self.evaluate(condition, *line)?;
+
+                match value {
+                    Value::Boolean(true) => (*line, self.execute(then_branch)),
+                    Value::Boolean(false) => {
+                        if let Some(branch) = else_branch {
+                            (*line, self.execute(branch))
+                        } else {
+                            (*line, Ok(()))
+                        }
+                    }
+                    value => (
+                        *line,
+                        Err(self.error(
+                            *line,
+                            format!("if condition must be boolean, got {}", value.type_name()),
+                        )),
+                    ),
+                }
+            }
         };
         result.map_err(|mut error| {
             error.line = line;

@@ -25,6 +25,12 @@ pub enum TokenKind {
 
     KwTrue,
     KwFalse,
+
+    KwIf,
+    KwElse,
+
+    LeftBrace,
+    RightBrace,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -201,6 +207,8 @@ impl Lexer {
                         "print" => (TokenKind::KwPrint, Literal::Nil),
                         "true" => (TokenKind::KwTrue, Literal::Boolean(true)),
                         "false" => (TokenKind::KwFalse, Literal::Boolean(false)),
+                        "if" => (TokenKind::KwIf, Literal::Nil),
+                        "else" => (TokenKind::KwElse, Literal::Nil),
                         _ => (TokenKind::Identifier, Literal::Nil),
                     };
 
@@ -350,6 +358,22 @@ impl Lexer {
                         }
                         self.advance();
                     }
+                }
+                '{' => {
+                    tokens.push(Token::new(
+                        TokenKind::LeftBrace,
+                        Literal::Nil,
+                        "{".to_string(),
+                        line,
+                    ));
+                }
+                '}' => {
+                    tokens.push(Token::new(
+                        TokenKind::RightBrace,
+                        Literal::Nil,
+                        "}".to_string(),
+                        line,
+                    ));
                 }
                 c if c.is_whitespace() => {}
                 _ => {

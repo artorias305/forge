@@ -112,6 +112,12 @@ pub enum Stmt {
         value: Expr,
         line: usize,
     },
+    If {
+        condition: Expr,
+        then_branch: Vec<Stmt>,
+        else_branch: Option<Vec<Stmt>>,
+        line: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -299,11 +305,59 @@ impl Parser {
                     line: token.line,
                 })
             }
+            TokenKind::KwIf => {
+                let condition = self.parse_expr()?;
+                let then_branch = self.parse_block()?;
+                let else_branch = if self
+                    .peek()
+                    .is_some_and(|token| matches!(token.kind, TokenKind::KwElse))
+                {
+                    self.advance();
+                    if self
+                        .peek()
+                        .is_some_and(|token| matches!(token.kind, TokenKind::KwIf))
+                    {
+                        Some(vec![self.parse_statement()?])
+                    } else {
+                        Some(self.parse_block()?)
+                    }
+                } else {
+                    None
+                };
+
+                Ok(Stmt::If {
+                    condition,
+                    then_branch,
+                    else_branch,
+                    line: token.line,
+                })
+            }
             _ => Err(ParseError {
                 line: token.line,
                 message: "expected statement".to_string(),
             }),
         }
+    }
+
+    fn parse_block(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        let opening = self.advance().ok_or_else(|| self.error("expected '{'"))?;
+        if !matches!(opening.kind, TokenKind::LeftBrace) {
+            return Err(ParseError {
+                line: opening.line,
+                message: "expected '{'".to_string(),
+            });
+        }
+
+        let mut statements = Vec::new();
+        while let Some(token) = self.peek() {
+            if matches!(token.kind, TokenKind::RightBrace) {
+                self.advance();
+                return Ok(statements);
+            }
+            statements.push(self.parse_statement()?);
+        }
+
+        Err(self.error("expected '}'"))
     }
 
     pub fn parse(&mut self) -> Result<Vec<Stmt>, ParseError> {
@@ -413,5 +467,30 @@ mod tests {
     fn rejects_missing_operand_after_string() {
         let error = parse("let s = \"a\" +").expect_err("missing right operand");
         assert_eq!(error.message, "expected expression");
+    }
+
+    #[test]
+    fn parses_if_else_blocks() {
+        let statements = parse("if 1 < 2 { print(\"yes\")} else {print(\"no\")}")
+            .expect("if statement should parse");
+
+        match &statements[0] {
+            Stmt::If {
+                condition: Expr::Binary { .. },
+                then_branch,
+                else_branch: Some(else_branch),
+                ..
+            } => {
+                assert!(matches!(then_branch[0], Stmt::Print { .. }));
+                assert!(matches!(else_branch[0], Stmt::Print { .. }));
+            }
+            other => panic!("expected if statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_unclosed_if_block() {
+        let error = parse("if true {print(1)").expect_err("unclosed block should fail");
+        assert_eq!(error.message, "expected '}'");
     }
 }
