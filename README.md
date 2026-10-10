@@ -56,6 +56,35 @@ if 10 > 5 {
 
 The condition must evaluate to a boolean; any other value is a runtime error.
 
+### Functions
+
+`fn` defines a named function. Parameters are comma-separated, and `return`
+exits early with a value:
+
+```forge
+fn add(a, b) {
+    return a + b
+}
+print(add(2, 3))
+```
+
+Falling off the end of the body returns `nil` (printed as `nil`), so `return`
+alone is optional. Calling a function with the wrong number of arguments is a
+runtime error, and recursion is limited to a fixed call depth.
+
+Functions are first-class values: they can be assigned and passed around:
+
+```forge
+fn double(x) { return x * 2 }
+let transform = double
+print(transform(21))
+```
+
+Each call gets its own scope for parameters and local `let`s; lookups fall
+through to global variables. Functions defined inside another function do not
+capture their surrounding scope (no closures), so referencing the caller's
+locals there is `undefined variable`.
+
 ## Expressions
 
 Forge supports numeric, string, and boolean expressions.

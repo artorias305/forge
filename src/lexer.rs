@@ -31,6 +31,10 @@ pub enum TokenKind {
 
     LeftBrace,
     RightBrace,
+    Comma,
+
+    KwFn,
+    KwReturn,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -216,6 +220,8 @@ impl Lexer {
                         "false" => (TokenKind::KwFalse, Literal::Boolean(false)),
                         "if" => (TokenKind::KwIf, Literal::Nil),
                         "else" => (TokenKind::KwElse, Literal::Nil),
+                        "fn" => (TokenKind::KwFn, Literal::Nil),
+                        "return" => (TokenKind::KwReturn, Literal::Nil),
                         _ => (TokenKind::Identifier, Literal::Nil),
                     };
 
@@ -382,6 +388,12 @@ impl Lexer {
                         line,
                     ));
                 }
+                ',' => tokens.push(Token::new(
+                    TokenKind::Comma,
+                    Literal::Nil,
+                    ",".to_string(),
+                    line,
+                )),
                 c if c.is_whitespace() => {}
                 _ => {
                     return Err(LexerError::new(
@@ -486,5 +498,18 @@ mod tests {
         assert!(matches!(tokens[2].kind, TokenKind::Number));
         assert!(matches!(tokens[3].kind, TokenKind::OpNot));
         assert!(matches!(tokens[4].kind, TokenKind::KwTrue));
+    }
+
+    #[test]
+    fn comma() {
+        let tokens = tokenize("fn a(b, c)").expect("source should lex");
+
+        assert!(matches!(tokens[0].kind, TokenKind::KwFn));
+        assert!(matches!(tokens[1].kind, TokenKind::Identifier));
+        assert!(matches!(tokens[2].kind, TokenKind::LeftParen));
+        assert!(matches!(tokens[3].kind, TokenKind::Identifier));
+        assert!(matches!(tokens[4].kind, TokenKind::Comma));
+        assert!(matches!(tokens[5].kind, TokenKind::Identifier));
+        assert!(matches!(tokens[6].kind, TokenKind::RightParen));
     }
 }

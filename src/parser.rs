@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::lexer::{Literal, NumberLiteral, Token, TokenKind};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BinaryOperator {
     Plus,
     Minus,
@@ -58,7 +58,7 @@ impl BinaryOperator {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum UnaryOperator {
     Plus,
     Minus,
@@ -84,7 +84,7 @@ impl UnaryOperator {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Number(NumberLiteral),
     String(String),
@@ -99,9 +99,14 @@ pub enum Expr {
         operator: UnaryOperator,
         operand: Box<Expr>,
     },
+    Call {
+        callee: Box<Expr>,
+        args: Vec<Expr>,
+        line: usize,
+    },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Print {
         expr: Expr,
@@ -116,6 +121,16 @@ pub enum Stmt {
         condition: Expr,
         then_branch: Vec<Stmt>,
         else_branch: Option<Vec<Stmt>>,
+        line: usize,
+    },
+    Function {
+        name: String,
+        params: Vec<String>,
+        body: Vec<Stmt>,
+        line: usize,
+    },
+    Return {
+        value: Option<Expr>,
         line: usize,
     },
 }
@@ -188,8 +203,112 @@ impl Parser {
                     operand: Box::new(self.parse_unary()?),
                 })
             }
-            None => self.parse_primary(),
+            None => self.parse_call(),
         }
+    }
+
+    fn parse_call(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_primary()?;
+
+        while self
+            .peek()
+            .is_some_and(|token| matches!(token.kind, TokenKind::LeftParen))
+        {
+            let call_line = self.line();
+            self.advance();
+            let args = self.parse_arguments()?;
+            expr = Expr::Call {
+                callee: Box::new(expr),
+                args,
+                line: call_line,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_arguments(&mut self) -> Result<Vec<Expr>, ParseError> {
+        let mut args = vec![];
+
+        if self
+            .peek()
+            .is_some_and(|token| matches!(token.kind, TokenKind::RightParen))
+        {
+            self.advance();
+            return Ok(args);
+        }
+
+        loop {
+            args.push(self.parse_expr()?);
+
+            let token = self.advance().ok_or_else(|| self.error("expected ')'"))?;
+            match token.kind {
+                TokenKind::RightParen => return Ok(args),
+                TokenKind::Comma => {}
+                _ => {
+                    return Err(ParseError {
+                        line: token.line,
+                        message: "expected ',' or ')'".to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    fn parse_parameters(&mut self) -> Result<Vec<String>, ParseError> {
+        let mut params = vec![];
+
+        if self
+            .peek()
+            .is_some_and(|token| matches!(token.kind, TokenKind::RightParen))
+        {
+            self.advance();
+            return Ok(params);
+        }
+
+        loop {
+            let token = self
+                .advance()
+                .ok_or_else(|| self.error("expected parameter name"))?;
+            if !matches!(token.kind, TokenKind::Identifier) {
+                return Err(ParseError {
+                    line: token.line,
+                    message: "expected parameter name".to_string(),
+                });
+            }
+            params.push(token.lexeme);
+
+            let token = self
+                .advance()
+                .ok_or_else(|| self.error("expected ',' or ')'"))?;
+            match token.kind {
+                TokenKind::RightParen => return Ok(params),
+                TokenKind::Comma => {}
+                _ => {
+                    return Err(ParseError {
+                        line: token.line,
+                        message: "expected ',' or ')'".to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    fn peek_starts_expr(&self) -> bool {
+        self.peek().is_some_and(|token| {
+            matches!(
+                token.kind,
+                TokenKind::Number
+                    | TokenKind::String
+                    | TokenKind::Identifier
+                    | TokenKind::KwTrue
+                    | TokenKind::KwFalse
+                    | TokenKind::LeftParen
+                    | TokenKind::OpNot
+                    | TokenKind::Plus
+                    | TokenKind::Minus
+            )
+        })
     }
 
     fn parse_binary_expr(&mut self, min_precedence: u8) -> Result<Expr, ParseError> {
@@ -302,6 +421,47 @@ impl Parser {
                 Ok(Stmt::Let {
                     name: name_token.lexeme,
                     value: self.parse_expr()?,
+                    line: token.line,
+                })
+            }
+            TokenKind::KwFn => {
+                let name_token = self
+                    .advance()
+                    .ok_or_else(|| self.error("expected identifier"))?;
+                if !matches!(name_token.kind, TokenKind::Identifier) {
+                    return Err(ParseError {
+                        line: name_token.line,
+                        message: "expected identifier".to_string(),
+                    });
+                }
+
+                let opening = self.advance().ok_or_else(|| self.error("expected '('"))?;
+                if !matches!(opening.kind, TokenKind::LeftParen) {
+                    return Err(ParseError {
+                        line: opening.line,
+                        message: "expected '('".to_string(),
+                    });
+                }
+
+                let params = self.parse_parameters()?;
+                let body = self.parse_block()?;
+
+                Ok(Stmt::Function {
+                    name: name_token.lexeme,
+                    params,
+                    body,
+                    line: token.line,
+                })
+            }
+            TokenKind::KwReturn => {
+                let value = if self.peek_starts_expr() {
+                    Some(self.parse_expr()?)
+                } else {
+                    None
+                };
+
+                Ok(Stmt::Return {
+                    value,
                     line: token.line,
                 })
             }
