@@ -1,0 +1,9 @@
+let x = 10
+
+if x > 10 {
+	print("big")
+} else if x == 10 {
+	print("equal")
+} else {
+	print("small")
+}
